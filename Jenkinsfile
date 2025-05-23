@@ -1,11 +1,6 @@
 pipeline {
   agent any
 
-  environment {
-    // Make sure you have a Jenkins “Secret text” credential named “snyk-token”
-    SNYK_TOKEN = credentials('snyk-token')
-  }
-
   stages {
     stage('Checkout') {
       steps {
@@ -15,28 +10,25 @@ pipeline {
 
     stage('Install Dependencies') {
       steps {
-        // Installs everything, including Snyk as a dev dependency
+        // Clean, fast, reproducible install
         bat 'npm ci'
-        // Add snyk into your devDependencies so that `npx snyk` works:
-        bat 'npm install --no-save snyk'
       }
     }
 
-    stage('Snyk Security Scan') {
+    stage('Security Audit') {
       steps {
         script {
-          // Authenticate via npx (no need for global PATH hacks)
-          bat "npx snyk auth %SNYK_TOKEN%"
+          // 1) dump the full audit report
+          bat 'npm audit --json > audit.json'
 
-          // Run the scan and dump JSON.  We capture exit code so pipeline never dies.
-          def code = bat(returnStatus: true,
-                         script: 'npx snyk test --json > snyk-report.json')
+          // 2) run npm audit (text) and capture exit code
+          def auditCode = bat(returnStatus: true, script: 'npm audit')
 
-          if (code != 0) {
+          if (auditCode != 0) {
             currentBuild.result = 'UNSTABLE'
-            echo "⚠️  Snyk found issues (exit ${code}); report in snyk-report.json"
+            echo "⚠️  Vulnerabilities found (exit code ${auditCode}). See audit.json"
           } else {
-            echo "✅  Snyk scan passed with no vulnerabilities."
+            echo "✅  No vulnerabilities found."
           }
         }
       }
@@ -45,20 +37,15 @@ pipeline {
 
   post {
     always {
-      // Always fire an email, attaching the JSON report
       emailext(
-        to: 'ahadsiddiqui094@gmail.com',
+        to:      'ahadsiddiqui094@gmail.com',
         subject: "${env.JOB_NAME} #${env.BUILD_NUMBER}: ${currentBuild.currentResult}",
         mimeType: 'text/html',
         body: """
-<html>
-  <body>
-    <p>Build <b>${env.JOB_NAME} #${env.BUILD_NUMBER}</b> finished with status: <b>${currentBuild.currentResult}</b>.</p>
-    <p>Please see the attached <code>snyk-report.json</code> for details.</p>
-  </body>
-</html>
-""",
-        attachmentsPattern: 'snyk-report.json'
+          <p>Build <b>${env.JOB_NAME} #${env.BUILD_NUMBER}</b> finished with <b>${currentBuild.currentResult}</b>.</p>
+          <p>The full <code>npm audit</code> report is attached.</p>
+        """,
+        attachmentsPattern: 'audit.json'
       )
     }
   }
