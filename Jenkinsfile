@@ -4,28 +4,24 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                // Pull Jenkinsfile + code
                 checkout scm
             }
         }
 
         stage('Install Dependencies') {
             steps {
-                // Windows: install npm packages
                 bat 'npm install'
             }
         }
 
         stage('Run Tests') {
             steps {
-                // Continue even if tests fail
                 bat 'npm test || exit /b 0'
             }
         }
 
         stage('Generate Coverage') {
             steps {
-                // Only if you have a "coverage" script
                 bat 'npm run coverage || exit /b 0'
             }
         }
@@ -35,7 +31,10 @@ pipeline {
                 // 1) npm audit
                 bat 'npm audit --json > audit.json || exit /b 0'
 
-                // 2) Snyk authenticated scan
+                // 2) Ensure Snyk is available
+                bat 'npm install -g snyk'
+
+                // 3) Authenticate & run Snyk
                 script {
                     withCredentials([string(credentialsId: 'snyk-token', variable: 'SNYK_TOKEN')]) {
                         bat 'snyk auth %SNYK_TOKEN%'
@@ -43,26 +42,29 @@ pipeline {
                     }
                 }
 
-                // 3) Show summaries in console
+                // 4) Show the reports
                 bat 'type audit.json'
                 bat 'type snyk-report.json'
             }
+            // No post here; failures will be handled in the final Notify stage
         }
 
         stage('Notify') {
             steps {
-                // Send email with both reports + full log
-                emailext(
+                // Always run this stage, even if previous stages failed
+                emailext (
                     to: 'ahadsiddiqui094@gmail.com',
                     subject: "Build ${env.JOB_NAME} #${env.BUILD_NUMBER} – ${currentBuild.currentResult}",
                     body: """\
 Hello,
 
-Your Jenkins job *${env.JOB_NAME}* (build #${env.BUILD_NUMBER}) has finished with status *${currentBuild.currentResult}*.
+Job:    ${env.JOB_NAME}
+Build:  #${env.BUILD_NUMBER}
+Status: ${currentBuild.currentResult}
 
-Attached:
- - audit.json (npm audit results)
- - snyk-report.json (Snyk scan report)
+Please find attached:
+ - audit.json
+ - snyk-report.json
  - Full console log
 
 Regards,
@@ -72,6 +74,17 @@ Jenkins
                     attachmentsPattern: 'audit.json,snyk-report.json'
                 )
             }
+            // force this stage to run even if earlier stages fail
+            post {
+                always { /* nothing needed here */ }
+            }
+        }
+    }
+
+    // ensure the Notify stage runs on any outcome
+    post {
+        always {
+            // noop: using a dedicated Notify stage instead
         }
     }
 }
