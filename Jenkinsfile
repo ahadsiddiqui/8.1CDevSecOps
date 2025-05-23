@@ -31,7 +31,7 @@ pipeline {
             steps {
                 bat 'npm audit || exit /b 0'
             }
-            post {
+            post { 
                 always {
                     emailext(
                         to: 'ahadsiddiqui094@gmail.com',
