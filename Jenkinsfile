@@ -2,36 +2,46 @@ pipeline {
   agent any
 
   stages {
-    stage('Checkout') {
-      steps { checkout scm }
-    }
-
-    stage('Install Dependencies') {
-      steps { bat 'npm install' }
-    }
+    stage('Checkout')     { steps { checkout scm } }
+    stage('Install')      { steps { bat 'npm install' } }
 
     stage('Run Tests') {
-      steps { bat 'npm test || exit /b 0' }
+      steps {
+        // make sure snyk is installed & authenticated
+        bat 'npm install -g snyk'
+        withCredentials([string(credentialsId: 'snyk-token', variable: 'SNYK_TOKEN')]) {
+          bat 'snyk auth %SNYK_TOKEN%'
+        }
+
+        // catch any test failures (including snyk) so build stays SUCCESS
+        catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+          bat 'npm test'
+        }
+      }
     }
 
     stage('Generate Coverage') {
-      steps { bat 'npm run coverage || exit /b 0' }
+      steps {
+        // if you don’t have a coverage script, you can skip or guard this
+        bat 'npm run coverage || exit /b 0'
+      }
     }
 
     stage('Security Scans') {
       steps {
-        bat 'npm audit --json > audit.json || exit /b 0'
-        bat 'npm install -g snyk'
-
+        // npm audit
         catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
-          withCredentials([string(credentialsId: 'snyk-token', variable: 'SNYK_TOKEN')]) {
-            bat 'snyk auth %SNYK_TOKEN%'
-            bat 'snyk test --json > snyk-report.json'
-          }
+          bat 'npm audit --json > audit.json'
         }
 
-        bat 'type audit.json        || exit /b 0'
-        bat 'type snyk-report.json  || exit /b 0'
+        // snyk test again if you like
+        catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+          bat 'snyk test --json > snyk-report.json'
+        }
+
+        // show results in Console
+        bat 'type audit.json         || exit /b 0'
+        bat 'type snyk-report.json   || exit /b 0'
       }
     }
   }
@@ -39,8 +49,8 @@ pipeline {
   post {
     always {
       emailext(
-        to: 'ahadsiddiqui094@gmail.com',
-        subject: "Build ${env.JOB_NAME} #${env.BUILD_NUMBER} – ${currentBuild.currentResult}",
+        to:      'ahadsiddiqui094@gmail.com',
+        subject: "Build ${env.JOB_NAME} #${env.BUILD_NUMBER}: ${currentBuild.currentResult}",
         body: """\
 Hello,
 
@@ -56,7 +66,7 @@ Attached:
 Regards,
 Jenkins
 """,
-        attachLog: true,
+        attachLog:          true,
         attachmentsPattern: 'audit.json,snyk-report.json'
       )
     }
