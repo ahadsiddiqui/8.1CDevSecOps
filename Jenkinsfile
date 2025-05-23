@@ -28,41 +28,37 @@ pipeline {
 
         stage('Security Scans') {
             steps {
-                // 1) npm audit
-                bat 'npm audit --json > audit.json || exit /b 0'
+                // Wrap everything so a failure here doesn't stop the pipeline
+                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+                    // npm audit
+                    bat 'npm audit --json > audit.json'
 
-                // 2) Ensure Snyk is available
-                bat 'npm install -g snyk'
+                    // install Snyk CLI if it’s missing
+                    bat 'npm install -g snyk'
 
-                // 3) Authenticate & run Snyk
-                script {
+                    // authenticate & run Snyk
                     withCredentials([string(credentialsId: 'snyk-token', variable: 'SNYK_TOKEN')]) {
                         bat 'snyk auth %SNYK_TOKEN%'
-                        bat 'snyk test --json > snyk-report.json || exit /b 0'
+                        bat 'snyk test --json > snyk-report.json'
                     }
                 }
-
-                // 4) Show the reports
+                // Show the output summaries
                 bat 'type audit.json'
                 bat 'type snyk-report.json'
             }
-            // No post here; failures will be handled in the final Notify stage
         }
 
         stage('Notify') {
             steps {
-                // Always run this stage, even if previous stages failed
-                emailext (
-                    to: 'ahadsiddiqui094@gmail.com',
+                emailext(
+                    to:      'ahadsiddiqui094@gmail.com',
                     subject: "Build ${env.JOB_NAME} #${env.BUILD_NUMBER} – ${currentBuild.currentResult}",
                     body: """\
 Hello,
 
-Job:    ${env.JOB_NAME}
-Build:  #${env.BUILD_NUMBER}
-Status: ${currentBuild.currentResult}
+Your Jenkins job *${env.JOB_NAME}* (build #${env.BUILD_NUMBER}) has finished with status *${currentBuild.currentResult}*.
 
-Please find attached:
+Attached:
  - audit.json
  - snyk-report.json
  - Full console log
@@ -74,17 +70,6 @@ Jenkins
                     attachmentsPattern: 'audit.json,snyk-report.json'
                 )
             }
-            // force this stage to run even if earlier stages fail
-            post {
-                always { /* nothing needed here */ }
-            }
-        }
-    }
-
-    // ensure the Notify stage runs on any outcome
-    post {
-        always {
-            // noop: using a dedicated Notify stage instead
         }
     }
 }
