@@ -1,65 +1,38 @@
 pipeline {
-    agent any
+  agent any
 
-    stages {
-        stage('Checkout') {
-            steps {
-                // Pull the Jenkinsfile and code from your GitHub repo
-                checkout scm
-            }
-        }
+  environment {
+    // pulls the token from Jenkins credentials
+    SNYK_TOKEN = credentials('snyk-token')
+  }
 
-        stage('Install Dependencies') {
-            steps {
-                // Install Node.js packages
-                bat 'npm install'
-            }
-        }
-
-        stage('Run Tests') {
-            steps {
-                // Run tests but don’t fail the build if they fail
-                bat 'npm test || exit /b 0'
-            }
-        }
-
-        stage('Generate Coverage Report') {
-            steps {
-                // Generate a coverage report without breaking the build
-                bat 'npm run coverage || exit /b 0'
-            }
-        }
-
-        stage('Security Scan') {
-            steps {
-                // Audit for known vulnerabilities and continue on error
-                bat 'npm audit --json > audit.json || exit /b 0'
-                // Display the audit summary in the console
-                bat 'type audit.json'
-            }
-        }
+  stages {
+    stage('Checkout') {
+      steps { checkout scm }
     }
 
-    post {
-        always {
-            // Send a custom email after every build
-            emailext(
-                to: 'ahadsiddiqui094@gmail.com',
-                subject: "Jenkins Build ${env.JOB_NAME} #${env.BUILD_NUMBER} - ${currentBuild.currentResult}",
-                body: """\
-Hello,
+    // … your other stages …
 
-Your Jenkins job *${env.JOB_NAME}* (build #${env.BUILD_NUMBER}) has finished with status: *${currentBuild.currentResult}*.
-
-– Audit report is attached as **audit.json**  
-– Full console log is attached as **log.txt**
-
-Regards,  
-Jenkins
-""",
-                attachLog: true,
-                attachmentsPattern: 'audit.json'
-            )
-        }
+    stage('Snyk Scan') {
+      steps {
+        // authenticate then run the test
+        bat 'snyk auth %SNYK_TOKEN%'
+        bat 'snyk test --json > snyk-report.json || exit /b 0'
+        bat 'type snyk-report.json'
+      }
     }
+  }
+
+  post {
+    always {
+      // email with both audit.json and snyk-report.json
+      emailext(
+        to: 'ahadsiddiqui094@gmail.com',
+        subject: "Build ${env.JOB_NAME} #${env.BUILD_NUMBER} – ${currentBuild.currentResult}",
+        body: "See attached security reports.",
+        attachmentsPattern: 'audit.json,snyk-report.json',
+        attachLog: true
+      )
+    }
+  }
 }
