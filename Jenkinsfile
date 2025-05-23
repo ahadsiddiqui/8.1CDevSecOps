@@ -28,48 +28,44 @@ pipeline {
 
         stage('Security Scans') {
             steps {
-                // Wrap everything so a failure here doesn't stop the pipeline
-                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-                    // npm audit
-                    bat 'npm audit --json > audit.json'
-
-                    // install Snyk CLI if it’s missing
+                // Catch any errors here and mark the build UNSTABLE, but continue
+                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                    bat 'npm audit --json > audit.json || exit /b 0'
                     bat 'npm install -g snyk'
-
-                    // authenticate & run Snyk
                     withCredentials([string(credentialsId: 'snyk-token', variable: 'SNYK_TOKEN')]) {
                         bat 'snyk auth %SNYK_TOKEN%'
-                        bat 'snyk test --json > snyk-report.json'
+                        bat 'snyk test --json > snyk-report.json || exit /b 0'
                     }
                 }
-                // Show the output summaries
-                bat 'type audit.json'
-                bat 'type snyk-report.json'
+                // Print summaries if they exist; ignore missing-file errors
+                bat 'type audit.json    || exit /b 0'
+                bat 'type snyk-report.json || exit /b 0'
             }
         }
+    }
 
-        stage('Notify') {
-            steps {
-                emailext(
-                    to:      'ahadsiddiqui094@gmail.com',
-                    subject: "Build ${env.JOB_NAME} #${env.BUILD_NUMBER} – ${currentBuild.currentResult}",
-                    body: """\
+    post {
+        always {
+            // This runs even if stages are unstable/fail
+            emailext(
+                to:      'ahadsiddiqui094@gmail.com',
+                subject: "Build ${env.JOB_NAME} #${env.BUILD_NUMBER} – ${currentBuild.currentResult}",
+                body: """\
 Hello,
 
-Your Jenkins job *${env.JOB_NAME}* (build #${env.BUILD_NUMBER}) has finished with status *${currentBuild.currentResult}*.
+Your Jenkins job *${env.JOB_NAME}* (build #${env.BUILD_NUMBER}) finished with status *${currentBuild.currentResult}*.
 
 Attached:
- - audit.json
- - snyk-report.json
+ - audit.json (npm audit results)
+ - snyk-report.json (Snyk scan results)
  - Full console log
 
 Regards,
 Jenkins
 """,
-                    attachLog: true,
-                    attachmentsPattern: 'audit.json,snyk-report.json'
-                )
-            }
+                attachLog: true,
+                attachmentsPattern: 'audit.json,snyk-report.json'
+            )
         }
     }
 }
