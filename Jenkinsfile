@@ -1,8 +1,8 @@
 pipeline {
   agent any
 
-  // Inject your Snyk Auth Token from Jenkins → Credentials → System → Global credentials
   environment {
+    // Make sure you have a Jenkins “Secret text” credential named “snyk-token”
     SNYK_TOKEN = credentials('snyk-token')
   }
 
@@ -15,34 +15,28 @@ pipeline {
 
     stage('Install Dependencies') {
       steps {
-        // On Windows, use `npm ci` for a clean install
+        // Installs everything, including Snyk as a dev dependency
         bat 'npm ci'
-      }
-    }
-
-    stage('Install Snyk CLI') {
-      steps {
-        // Globally install the Snyk CLI so that `snyk` is on PATH
-        bat 'npm install -g snyk'
+        // Add snyk into your devDependencies so that `npx snyk` works:
+        bat 'npm install --no-save snyk'
       }
     }
 
     stage('Snyk Security Scan') {
       steps {
         script {
-          // Authenticate the CLI
-          bat "snyk auth %SNYK_TOKEN%"
+          // Authenticate via npx (no need for global PATH hacks)
+          bat "npx snyk auth %SNYK_TOKEN%"
 
-          // Run `snyk test`, capture its exit code, and write JSON report
-          def exitCode = bat(returnStatus: true,
-                             script: 'snyk test --json > snyk-report.json')
+          // Run the scan and dump JSON.  We capture exit code so pipeline never dies.
+          def code = bat(returnStatus: true,
+                         script: 'npx snyk test --json > snyk-report.json')
 
-          // If Snyk found vulnerabilities, mark the build UNSTABLE (but not FAILED)
-          if (exitCode != 0) {
+          if (code != 0) {
             currentBuild.result = 'UNSTABLE'
-            echo "⚠️  Snyk found vulnerabilities (exit ${exitCode}). See snyk-report.json"
+            echo "⚠️  Snyk found issues (exit ${code}); report in snyk-report.json"
           } else {
-            echo "✅  Snyk scan passed cleanly."
+            echo "✅  Snyk scan passed with no vulnerabilities."
           }
         }
       }
@@ -50,20 +44,20 @@ pipeline {
   }
 
   post {
-    // Always email you, regardless of SUCCESS or UNSTABLE
     always {
+      // Always fire an email, attaching the JSON report
       emailext(
-        to:      'ahadsiddiqui094@gmail.com',
+        to: 'ahadsiddiqui094@gmail.com',
         subject: "${env.JOB_NAME} #${env.BUILD_NUMBER}: ${currentBuild.currentResult}",
-        body: """\
+        mimeType: 'text/html',
+        body: """
 <html>
   <body>
     <p>Build <b>${env.JOB_NAME} #${env.BUILD_NUMBER}</b> finished with status: <b>${currentBuild.currentResult}</b>.</p>
-    <p>The Snyk JSON report is attached for details.</p>
+    <p>Please see the attached <code>snyk-report.json</code> for details.</p>
   </body>
 </html>
 """,
-        mimeType:        'text/html',
         attachmentsPattern: 'snyk-report.json'
       )
     }
