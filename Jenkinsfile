@@ -3,7 +3,7 @@ pipeline {
 
   tools {
     // if you have the NodeJS plugin installed in Jenkins
-    nodejs 'NodeJS'
+    nodejs 'NodeJS 16'
   }
 
   environment {
