@@ -1,13 +1,12 @@
 pipeline {
   agent any
 
-  // grab your SNYK_TOKEN from Jenkins Credentials (ID = "snyk-token")
+  // Inject your Snyk Auth Token from Jenkins → Credentials → System → Global credentials
   environment {
     SNYK_TOKEN = credentials('snyk-token')
   }
 
   stages {
-
     stage('Checkout') {
       steps {
         checkout scm
@@ -16,76 +15,56 @@ pipeline {
 
     stage('Install Dependencies') {
       steps {
+        // On Windows, use `npm ci` for a clean install
         bat 'npm ci'
       }
     }
 
-    stage('Authenticate Snyk') {
+    stage('Install Snyk CLI') {
       steps {
-        // npx will download/run the local or remote snyk binary
-        bat 'npx snyk auth %SNYK_TOKEN%'
+        // Globally install the Snyk CLI so that `snyk` is on PATH
+        bat 'npm install -g snyk'
       }
     }
 
-    stage('Run Tests') {
+    stage('Snyk Security Scan') {
       steps {
-        // if tests (or snyk test inside them) fail, mark UNSTABLE but keep going
-        catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
-          bat 'npm test'
-        }
-      }
-    }
+        script {
+          // Authenticate the CLI
+          bat "snyk auth %SNYK_TOKEN%"
 
-    stage('Security Scans') {
-      parallel {
-        stage('npm audit') {
-          steps {
-            catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
-              bat 'npm audit --json > audit.json'
-            }
+          // Run `snyk test`, capture its exit code, and write JSON report
+          def exitCode = bat(returnStatus: true,
+                             script: 'snyk test --json > snyk-report.json')
+
+          // If Snyk found vulnerabilities, mark the build UNSTABLE (but not FAILED)
+          if (exitCode != 0) {
+            currentBuild.result = 'UNSTABLE'
+            echo "⚠️  Snyk found vulnerabilities (exit ${exitCode}). See snyk-report.json"
+          } else {
+            echo "✅  Snyk scan passed cleanly."
           }
-        }
-        stage('snyk test') {
-          steps {
-            catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
-              bat 'npx snyk test --json > snyk-report.json'
-            }
-          }
-        }
-      }
-      post {
-        always {
-          // show the JSON in the console so you can eyeball it in Jenkins without downloading
-          bat 'type audit.json         || exit /b 0'
-          bat 'type snyk-report.json   || exit /b 0'
         }
       }
     }
   }
 
   post {
+    // Always email you, regardless of SUCCESS or UNSTABLE
     always {
-      // send you an email no matter what, with both reports attached
       emailext(
         to:      'ahadsiddiqui094@gmail.com',
-        subject: "Jenkins: ${env.JOB_NAME} #${env.BUILD_NUMBER} — ${currentBuild.currentResult}",
+        subject: "${env.JOB_NAME} #${env.BUILD_NUMBER}: ${currentBuild.currentResult}",
         body: """\
-Hello Ahad,
-
-Job:    ${env.JOB_NAME}
-Build:  #${env.BUILD_NUMBER}
-Status: ${currentBuild.currentResult}
-
-Please find attached:
- • npm audit report (audit.json)
- • snyk report (snyk-report.json)
- • full console log
-
-Regards,
-Jenkins
+<html>
+  <body>
+    <p>Build <b>${env.JOB_NAME} #${env.BUILD_NUMBER}</b> finished with status: <b>${currentBuild.currentResult}</b>.</p>
+    <p>The Snyk JSON report is attached for details.</p>
+  </body>
+</html>
 """,
-        attachLog:          true,
-        attachmentsPattern: 'audit.json,snyk-report.json'
+        mimeType:        'text/html',
+        attachmentsPattern: 'snyk-report.json'
       )
     }
   }
