@@ -1,90 +1,58 @@
 pipeline {
-  agent any
+    agent any
 
-  tools {
-    // if you have the NodeJS plugin installed in Jenkins
-    nodejs 'NodeJS 16'
-  }
-
-  environment {
-    RECIPIENT = 'ahadsiddiqui094@gmail.com'
-  }
-
-  stages {
-    stage('Checkout') {
-      steps {
-        // Git checkout
-        checkout scm
-      }
+    environment {
+        EMAIL_RECIPIENT = 'ahadsiddiqui094@gmail.com'
     }
 
-    stage('Install') {
-      steps {
-        // clean install
-        bat 'npm ci'
-      }
-    }
-
-    stage('Lint') {
-      steps {
-        // ESLint (assumes you have a script lint in package.json)
-        bat 'npm run lint'
-      }
-    }
-
-    stage('Test') {
-      steps {
-        // run tests, tee output into test.log, and mark UNSTABLE instead of FAILED
-        catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
-          bat 'npm test 2>&1 | tee test.log'
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
         }
-      }
-      post {
+
+        stage('Install Dependencies') {
+            steps {
+                bat 'npm ci'
+            }
+        }
+
+        stage('Run Tests') {
+            steps {
+                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+                    bat 'npm test > testlog.txt'
+                }
+            }
+        }
+
+        stage('Security Audit') {
+            steps {
+                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                    bat 'npm audit > auditlog.txt'
+                }
+            }
+        }
+    }
+
+    post {
         always {
-          // Email after Test, attach test.log
-          emailext(
-            to:               "${env.RECIPIENT}",
-            subject:          "[${env.JOB_NAME} #${env.BUILD_NUMBER}] Test Stage ${currentBuild.currentResult}",
-            mimeType:         'text/html',
-            body:             """<p>The <b>Test</b> stage completed with status: <b>${currentBuild.currentResult}</b>.</p>
-                                <p>Please see attached <code>test.log</code> for details.</p>""",
-            attachmentsPattern: 'test.log'
-          )
+            script {
+                emailext(
+                    subject: "Jenkins Build: ${currentBuild.currentResult} - ${env.JOB_NAME}",
+                    body: """Hi Ahad,
+
+The Jenkins build for job '${env.JOB_NAME}' has finished with status: ${currentBuild.currentResult}.
+
+You can view the build at: ${env.BUILD_URL}
+
+Regards,
+Jenkins""",
+                    to: "${EMAIL_RECIPIENT}",
+                    attachmentsPattern: '**/testlog.txt, **/auditlog.txt',
+                    mimeType: 'text/plain'
+                )
+            }
         }
-      }
     }
-
-    stage('Security Scan') {
-      steps {
-        // run npm audit, dump JSON, but never fail the build
-        bat 'npm audit --json > audit.json || exit /b 0'
-      }
-      post {
-        always {
-          // Email after Security Scan, attach audit.json
-          emailext(
-            to:               "${env.RECIPIENT}",
-            subject:          "[${env.JOB_NAME} #${env.BUILD_NUMBER}] Security Scan completed",
-            mimeType:         'text/html',
-            body:             """<p>The <b>Security Scan</b> stage completed with status: <b>${currentBuild.currentResult}</b>.</p>
-                                <p>Please see attached <code>audit.json</code> for the full report.</p>""",
-            attachmentsPattern: 'audit.json'
-          )
-        }
-      }
-    }
-
-    stage('Deploy') {
-      steps {
-        // your deploy steps here
-        echo 'Deploying application…'
-      }
-    }
-  }
-
-  post {
-    always {
-      echo "Pipeline finished with overall status: ${currentBuild.currentResult}"
-    }
-  }
 }
