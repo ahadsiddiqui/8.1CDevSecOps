@@ -27,5 +27,30 @@ pipeline {
  bat 'npm audit || exit /b 0' // This will show known CVEs in the output
  }
  }
+  stage('NPM Audit (Security Scan)') {
+            steps {
+                bat 'npm audit || exit /b 0'
+            }
+            post {
+                always {
+                    emailext(
+                        to: 'you@domain.com',
+                        subject: "Jenkins Build ${env.JOB_NAME} #${env.BUILD_NUMBER}: ${currentBuild.currentResult}",
+                        body: """\
+Hello,
+
+Here is the report for build #${env.BUILD_NUMBER} of job ${env.JOB_NAME}:
+- Status: ${currentBuild.currentResult}
+- Audit report attached as audit.json
+
+Regards,
+Jenkins
+""",
+                        attachLog: true,
+                        attachmentsPattern: 'audit.json'
+                    )
+                }
+            }
+        }
  }
 }
