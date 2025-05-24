@@ -1,6 +1,5 @@
 pipeline {
   agent any
-
   environment {
     EMAIL_RECIPIENT = 'ahadsiddiqui094@gmail.com'
   }
@@ -8,6 +7,7 @@ pipeline {
   stages {
     stage('Checkout') {
       steps {
+        // Tool: Git
         checkout([
           $class: 'GitSCM',
           branches: [[name: '*/main']],
@@ -18,49 +18,90 @@ pipeline {
 
     stage('Install Dependencies') {
       steps {
+        // Tool: npm
         bat 'npm ci'
       }
     }
 
     stage('Run Tests') {
       steps {
+        // capture test output to file and never abort whole build
         catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
           bat 'npm test > testlog.txt || exit 0'
+        }
+      }
+      post {
+        success {
+          emailext(
+            to:               EMAIL_RECIPIENT,
+            subject:          "✅ Run Tests PASSED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+            body:             """\
+              Hello,
+
+              The **Run Tests** stage completed **SUCCESSFULLY**.
+
+              • See console log: ${env.BUILD_URL}console  
+              • Attached: testlog.txt
+            """.stripIndent(),
+            attachmentsPattern: 'testlog.txt'
+          )
+        }
+        failure {
+          emailext(
+            to:               EMAIL_RECIPIENT,
+            subject:          "❌ Run Tests FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+            body:             """\
+              Hello,
+
+              The **Run Tests** stage **FAILED**.
+
+              • See console log: ${env.BUILD_URL}console  
+              • Attached: testlog.txt
+            """.stripIndent(),
+            attachmentsPattern: 'testlog.txt'
+          )
         }
       }
     }
 
     stage('Security Audit') {
       steps {
+        // capture audit output to file and never abort whole build
         catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
           bat 'npm audit > auditlog.txt || exit 0'
         }
       }
-    }
-  }
+      post {
+        success {
+          emailext(
+            to:               EMAIL_RECIPIENT,
+            subject:          "✅ Security Audit PASSED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+            body:             """\
+              Hello,
 
-  post {
-    always {
-      // 1) Archive the logs so they can be attached
-      archiveArtifacts artifacts: 'testlog.txt,auditlog.txt', allowEmptyArchive: true
+              The **Security Audit** stage completed **SUCCESSFULLY**.
 
-      // 2) Send a single email—subject shows SUCCESS or FAILURE
-      script {
-        def result = currentBuild.currentResult ?: 'SUCCESS'
-        emailext(
-          to:               EMAIL_RECIPIENT,
-          subject:          "Build ${result}: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-          body:             """\
-            Hello,
+              • See console log: ${env.BUILD_URL}console  
+              • Attached: auditlog.txt
+            """.stripIndent(),
+            attachmentsPattern: 'auditlog.txt'
+          )
+        }
+        failure {
+          emailext(
+            to:               EMAIL_RECIPIENT,
+            subject:          "❌ Security Audit FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+            body:             """\
+              Hello,
 
-            Your pipeline has finished with status: ${result}
+              The **Security Audit** stage **FAILED**.
 
-            • View Console: ${env.BUILD_URL}console
-            • Attached: testlog.txt, auditlog.txt
-          """.stripIndent(),
-          attachmentsPattern: 'testlog.txt,auditlog.txt',
-          attachLog:         true
-        )
+              • See console log: ${env.BUILD_URL}console  
+              • Attached: auditlog.txt
+            """.stripIndent(),
+            attachmentsPattern: 'auditlog.txt'
+          )
+        }
       }
     }
   }
