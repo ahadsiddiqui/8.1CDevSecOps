@@ -8,8 +8,9 @@ pipeline {
   stages {
     stage('Checkout') {
       steps {
-        // Tool: Git (via Jenkins Git plugin)
-        checkout([$class: 'GitSCM',
+        // Tool: Git
+        checkout([
+          $class: 'GitSCM',
           branches: [[name: '*/main']],
           userRemoteConfigs: [[url: 'https://github.com/ahadsiddiqui/8.1CDevSecOps']]
         ])
@@ -18,7 +19,7 @@ pipeline {
 
     stage('Install Dependencies') {
       steps {
-        // Tool: npm (Node Package Manager)
+        // Tool: npm
         bat 'npm ci'
       }
     }
@@ -44,33 +45,30 @@ pipeline {
 
   post {
     always {
-      // DEBUG: show where the logs actually are
-      bat '''
-        echo ==== WORKSPACE ====
-        echo %WORKSPACE%
-        dir /B /S "%WORKSPACE%\\*.txt"
-        echo ===================
-      '''
+      // 1) archive the two log files so Email-Ext can actually find them
+      archiveArtifacts artifacts: 'testlog.txt,auditlog.txt', allowEmptyArchive: true
 
-      // Send one email regardless of pass/fail, but subject reflects status
-      emailext(
-        to:               "${EMAIL_RECIPIENT}",
-        subject:          "Build ${currentBuild.currentResult}: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-        body:             """\
-          Hello,
+      // 2) send exactly one email per build
+      script {
+        // determine overall status
+        def result = currentBuild.currentResult ?: 'SUCCESS'
+        emailext(
+          to:               EMAIL_RECIPIENT,
+          subject:          "Build ${result}: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+          body:             """
+            Hello,
 
-          The pipeline has finished with status: ${currentBuild.currentResult}
+            Your pipeline has finished with status: ${result}
 
-          • View console output: ${env.BUILD_URL}console
-          • Attached: testlog.txt, auditlog.txt
-
-          Cheers,
-          Jenkins
-        """.stripIndent(),
-        attachmentsPattern: '**/testlog.txt,**/auditlog.txt',
-        // set attachLog: true if you also want the full Jenkins console log
-        attachLog:         false
-      )
+            • Console log: ${env.BUILD_URL}console
+            • Attached: testlog.txt and auditlog.txt
+          """.stripIndent(),
+          // note: no spaces around the commas
+          attachmentsPattern: 'testlog.txt,auditlog.txt',
+          // also attach the full console log
+          attachLog:         true
+        )
+      }
     }
   }
 }
