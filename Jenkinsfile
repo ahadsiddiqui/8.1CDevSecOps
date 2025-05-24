@@ -9,7 +9,7 @@ pipeline {
         stage('Checkout') {
             steps {
                 // Replace with your Git checkout step
-                checkout([$class: 'GitSCM', branches: [[name: '*/main']], userRemoteConfigs: [[url: 'https://github.com/snyk-labs/nodejs-goof']]])
+                checkout([$class: 'GitSCM', branches: [[name: '*/main']], userRemoteConfigs: [[url: 'https://github.com/ahadsiddiqui/8.1CDevSecOps']]])
             }
         }
         
