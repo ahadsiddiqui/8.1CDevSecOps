@@ -1,5 +1,6 @@
 pipeline {
   agent any
+
   environment {
     EMAIL_RECIPIENT = 'ahadsiddiqui094@gmail.com'
   }
@@ -25,82 +26,58 @@ pipeline {
 
     stage('Run Tests') {
       steps {
-        // capture test output to file and never abort whole build
+        // capture stdout+stderr to testlog.txt, but never abort the whole job
         catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-          bat 'npm test > testlog.txt || exit 0'
+          bat 'npm test > testlog.txt 2>&1'
         }
       }
       post {
-        success {
-          emailext(
-            to:               EMAIL_RECIPIENT,
-            subject:          "✅ Run Tests PASSED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-            body:             """\
-              Hello,
+        always {
+          script {
+            def status = currentBuild.currentResult
+            emailext(
+              to:               EMAIL_RECIPIENT,
+              subject:          (status == 'SUCCESS' ? "✅ Tests PASSED" : "❌ Tests FAILED") + ": ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+              body:             """\
+                Hello,
 
-              The **Run Tests** stage completed **SUCCESSFULLY**.
+                The **Run Tests** stage has finished with status: ${status}
 
-              • See console log: ${env.BUILD_URL}console  
-              • Attached: testlog.txt
-            """.stripIndent(),
-            attachmentsPattern: 'testlog.txt'
-          )
-        }
-        failure {
-          emailext(
-            to:               EMAIL_RECIPIENT,
-            subject:          "❌ Run Tests FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-            body:             """\
-              Hello,
-
-              The **Run Tests** stage **FAILED**.
-
-              • See console log: ${env.BUILD_URL}console  
-              • Attached: testlog.txt
-            """.stripIndent(),
-            attachmentsPattern: 'testlog.txt'
-          )
+                • View full console: ${env.BUILD_URL}console
+                • Attached: testlog.txt
+              """.stripIndent(),
+              attachmentsPattern: 'testlog.txt'
+            )
+          }
         }
       }
     }
 
     stage('Security Audit') {
       steps {
-        // capture audit output to file and never abort whole build
+        // capture audit output to auditlog.txt, but never abort the whole job
         catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-          bat 'npm audit > auditlog.txt || exit 0'
+          bat 'npm audit > auditlog.txt 2>&1'
         }
       }
       post {
-        success {
-          emailext(
-            to:               EMAIL_RECIPIENT,
-            subject:          "✅ Security Audit PASSED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-            body:             """\
-              Hello,
+        always {
+          script {
+            def status = currentBuild.currentResult
+            emailext(
+              to:               EMAIL_RECIPIENT,
+              subject:          (status == 'SUCCESS' ? "✅ Security Audit PASSED" : "❌ Security Audit FAILED") + ": ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+              body:             """\
+                Hello,
 
-              The **Security Audit** stage completed **SUCCESSFULLY**.
+                The **Security Audit** stage has finished with status: ${status}
 
-              • See console log: ${env.BUILD_URL}console  
-              • Attached: auditlog.txt
-            """.stripIndent(),
-            attachmentsPattern: 'auditlog.txt'
-          )
-        }
-        failure {
-          emailext(
-            to:               EMAIL_RECIPIENT,
-            subject:          "❌ Security Audit FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-            body:             """\
-              Hello,
-
-              The **Security Audit** stage **FAILED**.
-
-              • See console log: ${env.BUILD_URL}console  
-              • Attached: auditlog.txt
-            """.stripIndent(),
-            attachmentsPattern: 'auditlog.txt'
-          )
+                • View full console: ${env.BUILD_URL}console
+                • Attached: auditlog.txt
+              """.stripIndent(),
+              attachmentsPattern: 'auditlog.txt'
+            )
+          }
         }
       }
     }
