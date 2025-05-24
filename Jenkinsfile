@@ -8,7 +8,6 @@ pipeline {
   stages {
     stage('Checkout') {
       steps {
-        // Tool: Git
         checkout([
           $class: 'GitSCM',
           branches: [[name: '*/main']],
@@ -19,14 +18,12 @@ pipeline {
 
     stage('Install Dependencies') {
       steps {
-        // Tool: npm
         bat 'npm ci'
       }
     }
 
     stage('Run Tests') {
       steps {
-        // Tool: npm test
         catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
           bat 'npm test > testlog.txt || exit 0'
         }
@@ -35,7 +32,6 @@ pipeline {
 
     stage('Security Audit') {
       steps {
-        // Tool: npm audit
         catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
           bat 'npm audit > auditlog.txt || exit 0'
         }
@@ -45,27 +41,24 @@ pipeline {
 
   post {
     always {
-      // 1) archive the two log files so Email-Ext can actually find them
+      // 1) Archive the logs so they can be attached
       archiveArtifacts artifacts: 'testlog.txt,auditlog.txt', allowEmptyArchive: true
 
-      // 2) send exactly one email per build
+      // 2) Send a single email—subject shows SUCCESS or FAILURE
       script {
-        // determine overall status
         def result = currentBuild.currentResult ?: 'SUCCESS'
         emailext(
           to:               EMAIL_RECIPIENT,
           subject:          "Build ${result}: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-          body:             """
+          body:             """\
             Hello,
 
             Your pipeline has finished with status: ${result}
 
-            • Console log: ${env.BUILD_URL}console
-            • Attached: testlog.txt and auditlog.txt
+            • View Console: ${env.BUILD_URL}console
+            • Attached: testlog.txt, auditlog.txt
           """.stripIndent(),
-          // note: no spaces around the commas
           attachmentsPattern: 'testlog.txt,auditlog.txt',
-          // also attach the full console log
           attachLog:         true
         )
       }
