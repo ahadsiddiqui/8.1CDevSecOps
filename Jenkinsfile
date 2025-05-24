@@ -45,31 +45,28 @@ pipeline {
 
   post {
     always {
-      // make sure our logs survive until the email step
-      archiveArtifacts artifacts: 'testlog.txt,auditlog.txt', fingerprint: false
+      // 1) archive the two log files so Email-Ext can actually find them
+      archiveArtifacts artifacts: 'testlog.txt,auditlog.txt', allowEmptyArchive: true
 
+      // 2) send exactly one email per build
       script {
-        // Build a subject reflecting the overall status
-        def status = currentBuild.currentResult == 'SUCCESS' ? 'SUCCESSFUL' : 'FAILED'
+        // determine overall status
+        def result = currentBuild.currentResult ?: 'SUCCESS'
         emailext(
-          to:      EMAIL_RECIPIENT,
-          subject: "Pipeline ${status}: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-          body: """
-            Hi,
+          to:               EMAIL_RECIPIENT,
+          subject:          "Build ${result}: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+          body:             """
+            Hello,
 
-            The pipeline has finished with status: ${status}.
+            Your pipeline has finished with status: ${result}
 
-            You can view the full console log here: ${env.BUILD_URL}console
-
-            Attached are the per-stage logs (testlog.txt & auditlog.txt).
-
-            Cheers,
-            Jenkins
-          """,
-          // attach just those two files
+            • Console log: ${env.BUILD_URL}console
+            • Attached: testlog.txt and auditlog.txt
+          """.stripIndent(),
+          // note: no spaces around the commas
           attachmentsPattern: 'testlog.txt,auditlog.txt',
-          // plus the entire console log
-          attachLog: true
+          // also attach the full console log
+          attachLog:         true
         )
       }
     }
