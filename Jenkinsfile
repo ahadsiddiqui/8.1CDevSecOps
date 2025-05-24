@@ -34,11 +34,7 @@ pipeline {
                 success {
                     emailext(
                         subject: "✅ Tests Passed: ${currentBuild.fullDisplayName}",
-                        body: """\
-All tests completed successfully.
-
-Attached: testlog.txt
-""",
+                        body: "All tests completed successfully.\n\nAttached: testlog.txt",
                         to: "${EMAIL_RECIPIENT}",
                         attachmentsPattern: 'testlog.txt'
                     )
@@ -46,11 +42,7 @@ Attached: testlog.txt
                 failure {
                     emailext(
                         subject: "❌ Tests FAILED: ${currentBuild.fullDisplayName}",
-                        body: """\
-Some tests failed.  Please review the attached log.
-
-Attached: testlog.txt
-""",
+                        body: "Some tests failed. Please review the attached log.\n\nAttached: testlog.txt",
                         to: "${EMAIL_RECIPIENT}",
                         attachmentsPattern: 'testlog.txt'
                     )
@@ -69,11 +61,7 @@ Attached: testlog.txt
                 always {
                     emailext(
                         subject: "🔒 Security Audit: ${currentBuild.currentResult} – ${currentBuild.fullDisplayName}",
-                        body: """\
-Security audit completed with status: ${currentBuild.currentResult}.
-
-Attached: auditlog.txt
-""",
+                        body: "Security audit completed with status: ${currentBuild.currentResult}.\n\nAttached: auditlog.txt",
                         to: "${EMAIL_RECIPIENT}",
                         attachmentsPattern: 'auditlog.txt'
                     )
@@ -83,20 +71,14 @@ Attached: auditlog.txt
     }
 
     post {
-        // catch anything else (checkout/install errors, etc.)
         failure {
             emailext(
                 subject: "🚨 Pipeline FAILED: ${currentBuild.fullDisplayName}",
-                body: """\
-The pipeline failed before reaching the test or audit stages.
-Please check the full console log for details.
-""",
+                body: "The pipeline failed before reaching the test or audit stages. See the full console log for details.",
                 to: "${EMAIL_RECIPIENT}",
                 attachLog: true
             )
         }
-        success {
-            // No global success email — tests & audit already fired them.
-        }
+        // no success block here
     }
 }
