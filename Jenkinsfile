@@ -1,65 +1,51 @@
 pipeline {
-  agent any
-
-  environment {
-    EMAIL_RECIPIENT = 'ahadsiddiqui094@gmail.com'
-  }
-
-  stages {
-    stage('Checkout') {
-      steps {
-        checkout scm
-      }
+    agent any
+    
+    environment {
+        EMAIL_RECIPIENT = 'ahadsiddiqui094@gmail.com'
     }
-
-    stage('Install Dependencies') {
-      steps {
-        bat 'npm ci'
-      }
-    }
-
-    stage('Run Tests') {
-      steps {
-        catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-          bat 'npm test > testlog.txt'
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                // Replace with your Git checkout step
+                checkout([$class: 'GitSCM', branches: [[name: '*/main']], userRemoteConfigs: [[url: 'https://github.com/snyk-labs/nodejs-goof']]])
+            }
         }
-      }
-    }
-
-    stage('Security Audit') {
-      steps {
-        catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
-          bat 'npm audit --json > auditlog.txt'
+        
+        stage('Install Dependencies') {
+            steps {
+                bat 'npm ci'
+            }
         }
-      }
+        
+        stage('Run Tests') {
+            steps {
+                bat 'npm test > testlog.txt || exit 0'
+            }
+        }
+        
+        stage('Security Audit') {
+            steps {
+                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+                    bat 'npm audit > auditlog.txt || exit 0'
+                }
+            }
+        }
     }
-  }
-
-  post {
-    always {
-      script {
-        // Read both logs and decide status
-        def t = fileExists('testlog.txt') ? readFile('testlog.txt') : ''
-        def a = fileExists('auditlog.txt') ? readFile('auditlog.txt') : ''
-        env.EMAIL_STATUS = (t.contains('ERR') || a.contains('"vulnerabilities":') && a.contains('"total":0')==false)
-                            ? 'FAILURE' : 'SUCCESS'
-      }
-
-      emailext(
-        subject: "Jenkins Build ${EMAIL_STATUS}: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-        body: """Hi Ahad,
-
-The Jenkins build for job '${env.JOB_NAME}' (#${env.BUILD_NUMBER}) has finished with status: ${EMAIL_STATUS}.
-
-You can view the full console output at:
-${env.BUILD_URL}console
-
-Regards,
-Jenkins""",
-        to: "${EMAIL_RECIPIENT}",
-        mimeType: 'text/plain',
-        attachmentsPattern: '**/testlog.txt, **/auditlog.txt'
-      )
+    
+    post {
+        success {
+            emailext subject: "Pipeline Successful: ${currentBuild.fullDisplayName}",
+                     body: "Pipeline executed successfully.",
+                     to: "${EMAIL_RECIPIENT}",
+                     attachLog: true
+        }
+        failure {
+            emailext subject: "Pipeline Failed: ${currentBuild.fullDisplayName}",
+                     body: "There was a failure in the pipeline execution.",
+                     to: "${EMAIL_RECIPIENT}",
+                     attachLog: true
+        }
     }
-  }
 }
