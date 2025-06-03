@@ -2,7 +2,7 @@ pipeline {
   agent any
 
   environment {
-    EMAIL_RECIPIENT = 'ahadsiddiqui094@gmail.com'  // ← adjust as needed
+    EMAIL_RECIPIENT = 'ahadsiddiqui094@gmail.com' 
   }
 
   stages {
@@ -12,7 +12,7 @@ pipeline {
         checkout([
           $class: 'GitSCM',
           branches: [[name: '*/main']],
-          userRemoteConfigs: [[url: 'https://github.com/ahadsiddiqui/8.1CDevSecOps']]
+          userRemoteConfigs: [[url: 'https://github.com/ahadsiddiqui/8.1CDevSecOps']] 
         ])
       }
     }
